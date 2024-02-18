@@ -53,6 +53,7 @@
  */
 
 #include <string>
+#include <unordered_map>
 
 class Query_block;
 class THD;
@@ -149,5 +150,16 @@ void FindSargablePredicates(THD *thd, std::string *trace,
 
 void EstimateAggregateCost(AccessPath *path);
 void EstimateMaterializeCost(THD *thd, AccessPath *path);
+
+class UncertainChoiceCounter {
+public:
+  static std::unordered_map<int,int> counter;
+  static int currentQuery;
+  static void AddNewCounterForQuery();
+  static void IncreaseCounter();
+  static void PrintCountInformation();
+
+  UncertainChoiceCounter() = delete;
+};
 
 #endif  // SQL_JOIN_OPTIMIZER_JOIN_OPTIMIZER_H

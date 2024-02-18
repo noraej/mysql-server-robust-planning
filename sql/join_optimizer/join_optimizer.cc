@@ -33,7 +33,9 @@
 #include <bit>
 #include <bitset>
 #include <cmath>
+#include <fstream>
 #include <initializer_list>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -5076,6 +5078,16 @@ PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
   flags = AddFlag(
       flags, FuzzyComparison(a.rescan_cost(), b.rescan_cost(), fuzz_factor));
 
+  auto confidence_threshold = 0.1;
+  double cost_difference = std::abs(a.cost() - b.cost());
+
+  double percentage_of_plan_a = confidence_threshold * a.cost();
+  double percentage_of_plan_b = confidence_threshold * b.cost();
+
+  if (percentage_of_plan_a <= cost_difference && percentage_of_plan_b <= cost_difference) {
+    UncertainChoiceCounter::IncreaseCounter();
+  }
+
   bool a_is_better = HasFlag(flags, FuzzyComparisonResult::FIRST_BETTER);
   bool b_is_better = HasFlag(flags, FuzzyComparisonResult::SECOND_BETTER);
   if (a_is_better && b_is_better) {
@@ -8044,6 +8056,7 @@ AccessPath *FindBestQueryPlan(THD *thd, Query_block *query_block,
                               string *trace) {
   assert(thd->variables.optimizer_max_subgraph_pairs <
          ulong{std::numeric_limits<int>::max()});
+  UncertainChoiceCounter::AddNewCounterForQuery();
   int next_retry_subgraph_pairs =
       static_cast<int>(thd->variables.optimizer_max_subgraph_pairs);
   bool retry = false;
@@ -8053,5 +8066,39 @@ AccessPath *FindBestQueryPlan(THD *thd, Query_block *query_block,
     root_path = FindBestQueryPlanInner(thd, query_block, &retry,
                                        &next_retry_subgraph_pairs, trace);
   }
+  UncertainChoiceCounter::PrintCountInformation();
   return root_path;
 }
+
+
+std::unordered_map<int, int> UncertainChoiceCounter::counter;
+int UncertainChoiceCounter::currentQuery;
+
+void ::UncertainChoiceCounter::AddNewCounterForQuery(){
+  currentQuery += 1;
+  counter.insert({currentQuery, 0});
+}
+
+void ::UncertainChoiceCounter::IncreaseCounter() {
+  auto pair = counter.find(currentQuery);
+  if(pair != counter.end()) {
+    pair->second = pair->second + 1;
+  }
+}
+
+void ::UncertainChoiceCounter::PrintCountInformation(){
+  string plansAndChoices = "";
+  for (const auto & pair: counter) {
+    plansAndChoices += "[";
+    plansAndChoices += std::to_string(pair.first);
+    plansAndChoices += ", ";
+    plansAndChoices += std::to_string(pair.second);
+    plansAndChoices += "], ";
+  }
+  plansAndChoices += "\n";
+
+  std::ofstream outputfile("/home/leag/MySQL/mysql-server-robust-planning/cmake-build-release/mysql-test/var/log/uncertain_choices_count.txt", std::ios::out | std::ios::binary);
+  outputfile << plansAndChoices;
+  outputfile.close();
+}
+
