@@ -1,0 +1,186 @@
+{
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"ADD_CUSTOM_TARGET",
+			"ADD_DEPENDENCIES",
+			"ADD_DYNAMIC_STATE_SCHEMA_COMMAND"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt",
+			"plugin/group_replication/libmysqlgcs/CMakeLists.txt",
+			"plugin/x/protocol/plugin/CMakeLists.txt",
+			"utilities/CMakeLists.txt",
+			"sql/CMakeLists.txt",
+			"router/src/harness/src/CMakeLists.txt",
+			"router/src/mock_server/src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 2184,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 2185,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 248,
+				"parent" : 3
+			},
+			{
+				"file" : 2
+			},
+			{
+				"command" : 1,
+				"file" : 2,
+				"line" : 89,
+				"parent" : 5
+			},
+			{
+				"file" : 3
+			},
+			{
+				"command" : 1,
+				"file" : 3,
+				"line" : 56,
+				"parent" : 7
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 2186,
+				"parent" : 0
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 1,
+				"file" : 4,
+				"line" : 1412,
+				"parent" : 10
+			},
+			{
+				"file" : 5
+			},
+			{
+				"command" : 2,
+				"file" : 5,
+				"line" : 68,
+				"parent" : 12
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 63,
+				"parent" : 13
+			},
+			{
+				"command" : 2,
+				"file" : 5,
+				"line" : 69,
+				"parent" : 12
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 63,
+				"parent" : 15
+			},
+			{
+				"file" : 6
+			},
+			{
+				"command" : 1,
+				"file" : 6,
+				"line" : 39,
+				"parent" : 17
+			}
+		]
+	},
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "protobuf_generated_all::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "xcom_rpcgen_headers::@0943ec7f8775def64fa6"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "xprotocol_tags::@a6639a947f5b90e4f724"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "GenClientError::@d3b0ab015cfc9b043577"
+		},
+		{
+			"backtrace" : 9,
+			"id" : "GenError::@d3b0ab015cfc9b043577"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "GenServerSource::@e985624cb5cf1aba6ab1"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "GenDigestServerSource::@e985624cb5cf1aba6ab1"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "GenKeywordList::@e985624cb5cf1aba6ab1"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "GenFixPrivs::@de1a740d5dc98ffd5d0e"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "GenBootstrapPriv::@de1a740d5dc98ffd5d0e"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "GenSysSchema::@7ed8a01c35c996bc5d71"
+		},
+		{
+			"backtrace" : 14,
+			"id" : "json_schema_target_SHARED::@27553637d7cd8e81ae3b"
+		},
+		{
+			"backtrace" : 16,
+			"id" : "json_schema_target_STATIC::@27553637d7cd8e81ae3b"
+		},
+		{
+			"backtrace" : 18,
+			"id" : "mysql_server_mock_schema::@09c51ce0bca0d324c59e"
+		}
+	],
+	"id" : "clang_tidy_prerequisites::@6890427a1f51a3e7e1df",
+	"name" : "clang_tidy_prerequisites",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}
