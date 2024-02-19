@@ -3,8 +3,8 @@
 //
 #include "sql/join_optimizer/bounding_box.h"
 
-double BoundingBox::incremental_step = 0.2;
-double BoundingBox::decremental_step = 0.1;
+double BoundingBox::incremental_step = 0.1;
+double BoundingBox::decremental_step = 0.05;
 double BoundingBox::alpha = 0;
 double BoundingBox::beta = 1.0;
 double BoundingBox::gamma = 0;

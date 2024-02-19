@@ -469,7 +469,7 @@ double EstimateSelectivity(THD *thd, Item *condition,
             " - used an index or a histogram for %s, selectivity = %g\n",
             ItemToString(condition).c_str(), selectivity);
       }
-      return BoundingBox::GetUpperBound(selectivity, RiskLevel::Medium);
+      return BoundingBox::GetUpperBound(selectivity, RiskLevel::MediumHigh);
     }
   }
 

@@ -26,7 +26,8 @@ public:
 enum class RiskLevel {
   Low = 0,
   Medium = 1,
-  High = 2
+  MediumHigh = 2,
+  High = 3
 };
 
 #endif //BOUNDING_BOX_H
