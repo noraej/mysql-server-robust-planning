@@ -66,6 +66,7 @@
 #include "sql/item_sum.h"
 #include "sql/join_optimizer/access_path.h"
 #include "sql/join_optimizer/bit_utils.h"
+#include "sql/join_optimizer/bounding_box.h"
 #include "sql/join_optimizer/build_interesting_orders.h"
 #include "sql/join_optimizer/compare_access_paths.h"
 #include "sql/join_optimizer/cost_model.h"
@@ -4292,6 +4293,8 @@ void CostingReceiver::ProposeHashJoin(
   cost += num_output_rows * edge->expr->join_conditions.size() *
           kApplyOneFilterCost;
 
+  cost = BoundingBox::GetUpperBound(cost, RiskLevel::Low);
+
   join_path.num_output_rows_before_filter = num_output_rows;
   join_path.set_cost_before_filter(cost);
   join_path.set_num_output_rows(num_output_rows);
@@ -4870,6 +4873,7 @@ void CostingReceiver::ProposeNestedLoopJoin(
       std::max(0.0, outer->num_output_rows() - 1.0);
 
   join_path.set_cost(outer->cost() + first_loop_cost + subsequent_loops_cost);
+  join_path.set_cost(BoundingBox::GetUpperBound(join_path.cost(), RiskLevel::Medium));
   join_path.set_cost_before_filter(join_path.cost());
 
   // Nested-loop preserves any ordering from the outer side. Note that actually,

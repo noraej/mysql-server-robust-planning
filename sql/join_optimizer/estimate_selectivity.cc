@@ -28,6 +28,7 @@
 #include <initializer_list>
 #include <string>
 
+#include "bounding_box.h"
 #include "my_bitmap.h"
 #include "my_table_map.h"
 #include "sql/field.h"
@@ -400,7 +401,7 @@ double EstimateSelectivity(THD *thd, Item *condition,
                 " - used an index or a histogram for %s, selectivity = %g\n",
                 ItemToString(condition).c_str(), selectivity);
           }
-          return selectivity;
+          return BoundingBox::GetUpperBound(selectivity, RiskLevel::Low);
         }
       } else if (left->type() == Item::FIELD_ITEM) {
         // field = <anything> (except field = field).
@@ -468,7 +469,7 @@ double EstimateSelectivity(THD *thd, Item *condition,
             " - used an index or a histogram for %s, selectivity = %g\n",
             ItemToString(condition).c_str(), selectivity);
       }
-      return selectivity;
+      return BoundingBox::GetUpperBound(selectivity, RiskLevel::Medium);
     }
   }
 
@@ -499,5 +500,5 @@ double EstimateSelectivity(THD *thd, Item *condition,
     *trace += StringPrintf(" - fallback selectivity for %s = %g\n",
                            ItemToString(condition).c_str(), selectivity);
   }
-  return selectivity;
+  return BoundingBox::GetUpperBound(selectivity, RiskLevel::High);
 }
