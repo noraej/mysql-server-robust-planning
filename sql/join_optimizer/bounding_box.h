@@ -21,6 +21,8 @@ public:
   static double GetLowerBound(double estimate, RiskLevel risk_level);
   static std::tuple<double, double, double> GetBoundingBox(double estimate, RiskLevel risk_level);
   static double ComputeCost(double lower_cost, double estimated_cost, double upper_cost);
+  static double GetNewCost(double estimate, RiskLevel risk_level);
+  static double GetNewEstimate(double estimate, RiskLevel risk_level);
 };
 
 enum class RiskLevel {
