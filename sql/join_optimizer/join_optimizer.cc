@@ -5078,13 +5078,14 @@ PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
   flags = AddFlag(
       flags, FuzzyComparison(a.rescan_cost(), b.rescan_cost(), fuzz_factor));
 
-  auto confidence_threshold = 0.1;
+  auto cost_threshold = 0.01;
   double cost_difference = std::abs(a.cost() - b.cost());
 
-  double percentage_of_plan_a = confidence_threshold * a.cost();
-  double percentage_of_plan_b = confidence_threshold * b.cost();
+  double highest_cost = std::max(a.cost(), b.cost());
 
-  if (percentage_of_plan_a <= cost_difference && percentage_of_plan_b <= cost_difference) {
+  double percentage_of_plan = cost_threshold * highest_cost;
+
+  if (cost_difference <= percentage_of_plan) {
     UncertainChoiceCounter::IncreaseCounter();
   }
 
