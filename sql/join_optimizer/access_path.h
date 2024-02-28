@@ -36,6 +36,7 @@
 #include "sql/item.h"
 // IWYU suggests removing row_iterator.h, but then the inlined short form of
 // CreateIteratorFromAccessPath() fails to compile. So use a pragma to keep it.
+#include "bounding_box.h"
 #include "sql/iterators/row_iterator.h"  // IWYU pragma: keep
 #include "sql/join_optimizer/interesting_orders_defs.h"
 #include "sql/join_optimizer/materialize_path_parameters.h"
@@ -382,13 +383,23 @@ struct AccessPath {
   /// information in EXPLAIN ANALYZE queries.
   RowIterator *iterator = nullptr;
 
-  double cost() const { return m_cost; }
+  RiskLevel risk_level = RiskLevel::Low;
+
+  /*double cost() const { return m_cost; }
 
   double init_cost() const { return m_init_cost; }
 
   double init_once_cost() const { return m_init_once_cost; }
 
-  double cost_before_filter() const { return m_cost_before_filter; }
+  double cost_before_filter() const { return m_cost_before_filter; }*/
+
+  double cost() const { return BoundingBox::GetNewCost(m_cost, risk_level); }
+
+  double init_cost() const { return BoundingBox::GetNewCost(m_init_cost, risk_level); }
+
+  double init_once_cost() const { return BoundingBox::GetNewCost(m_init_once_cost, risk_level); }
+
+  double cost_before_filter() const { return BoundingBox::GetNewCost(m_cost_before_filter, risk_level); }
 
   void set_cost(double val) {
     assert(val >= 0.0 || val == kUnknownCost);
@@ -1287,7 +1298,7 @@ static_assert(std::is_trivially_destructible<AccessPath>::value,
               "on the MEM_ROOT and not wrapped in unique_ptr_destroy_only"
               "(because multiple candidates during planning could point to "
               "the same access paths, and refcounting would be expensive)");
-static_assert(sizeof(AccessPath) <= 144,
+static_assert(sizeof(AccessPath) <= 160,
               "We are creating a lot of access paths in the join "
               "optimizer, so be sure not to bloat it without noticing. "
               "(96 bytes for the base, 48 bytes for the variant.)");

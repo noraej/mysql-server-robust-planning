@@ -28,6 +28,7 @@
 #include <initializer_list>
 #include <string>
 
+#include "bounding_box.h"
 #include "my_bitmap.h"
 #include "my_table_map.h"
 #include "sql/field.h"
@@ -317,6 +318,7 @@ double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
   uint longest_prefix = 0;
   double selectivity = -1.0;
   double selectivity_cap = 1.0;
+  RiskLevel risk_level = RiskLevel::High;
 
   for (const Field *equal_field : equal_fields) {
     for (uint key_no = equal_field->part_of_key.get_first_set();
@@ -338,8 +340,10 @@ double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
       if (key_data.prefix_length > longest_prefix) {
         longest_prefix = key_data.prefix_length;
         selectivity = key_data.selectivity;
+        risk_level = RiskLevel::Low;
       } else if (key_data.prefix_length == longest_prefix) {
         selectivity = std::max(selectivity, key_data.selectivity);
+        risk_level = RiskLevel::Low;
       }
     }
   }
@@ -353,7 +357,7 @@ double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
     }
   }
 
-  return selectivity;
+  return BoundingBox::GetNewEstimate(selectivity, risk_level);
 }
 
 }  // Anonymous namespace.
@@ -400,7 +404,7 @@ double EstimateSelectivity(THD *thd, Item *condition,
                 " - used an index or a histogram for %s, selectivity = %g\n",
                 ItemToString(condition).c_str(), selectivity);
           }
-          return selectivity;
+          return BoundingBox::GetNewEstimate(selectivity, RiskLevel::Low);
         }
       } else if (left->type() == Item::FIELD_ITEM) {
         // field = <anything> (except field = field).
@@ -468,7 +472,7 @@ double EstimateSelectivity(THD *thd, Item *condition,
             " - used an index or a histogram for %s, selectivity = %g\n",
             ItemToString(condition).c_str(), selectivity);
       }
-      return selectivity;
+      return BoundingBox::GetNewEstimate(selectivity, RiskLevel::MediumHigh);
     }
   }
 
@@ -499,5 +503,5 @@ double EstimateSelectivity(THD *thd, Item *condition,
     *trace += StringPrintf(" - fallback selectivity for %s = %g\n",
                            ItemToString(condition).c_str(), selectivity);
   }
-  return selectivity;
+  return BoundingBox::GetNewEstimate(selectivity, RiskLevel::High);
 }
