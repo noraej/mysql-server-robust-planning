@@ -4212,6 +4212,8 @@ void CostingReceiver::ProposeHashJoin(
       ~(left | right);
   join_path.hash_join().outer = left_path;
   join_path.hash_join().inner = right_path;
+  auto highest_risk = std::max(static_cast<std::underlying_type_t<RiskLevel>>(left_path->risk_level), static_cast<std::underlying_type_t<RiskLevel>>(right_path->risk_level));
+  join_path.risk_level = static_cast<RiskLevel>(highest_risk);
   join_path.hash_join().join_predicate = edge;
   join_path.hash_join().store_rowids = false;
   join_path.hash_join().rewrite_semi_to_inner = rewrite_semi_to_inner;
@@ -4707,6 +4709,8 @@ void CostingReceiver::ProposeNestedLoopJoin(
   join_path.nested_loop_join().already_expanded_predicates = false;
   join_path.nested_loop_join().outer = left_path;
   join_path.nested_loop_join().inner = right_path;
+  auto highest_risk = std::max(static_cast<std::underlying_type_t<RiskLevel>>(left_path->risk_level), static_cast<std::underlying_type_t<RiskLevel>>(right_path->risk_level));
+  join_path.risk_level = static_cast<RiskLevel>(highest_risk);
   if (rewrite_semi_to_inner) {
     // This join is a semijoin (which is non-commutative), but the caller wants
     // us to try to invert it anyway; or to be precise, it has already inverted
