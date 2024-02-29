@@ -315,10 +315,11 @@ KeySelectivityResult EstimateSelectivityFromIndexStatistics(
 double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
                                          const CompanionSet &companion_set,
                                          string *trace) {
+  //Note Lea: Do not need to calculate new estimate since the method that calls this method does the calculation
   uint longest_prefix = 0;
   double selectivity = -1.0;
   double selectivity_cap = 1.0;
-  RiskLevel risk_level = RiskLevel::High;
+  //RiskLevel risk_level = RiskLevel::High;
 
   for (const Field *equal_field : equal_fields) {
     for (uint key_no = equal_field->part_of_key.get_first_set();
@@ -340,10 +341,10 @@ double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
       if (key_data.prefix_length > longest_prefix) {
         longest_prefix = key_data.prefix_length;
         selectivity = key_data.selectivity;
-        risk_level = RiskLevel::Low;
+        //risk_level = RiskLevel::Low;
       } else if (key_data.prefix_length == longest_prefix) {
         selectivity = std::max(selectivity, key_data.selectivity);
-        risk_level = RiskLevel::Low;
+        //risk_level = RiskLevel::Low;
       }
     }
   }
@@ -354,11 +355,12 @@ double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
     // Look for histograms if there was no suitable index.
     for (const Field *field : equal_fields) {
       selectivity = std::max(selectivity, HistogramSelectivity(*field, trace));
-      risk_level = RiskLevel::Medium;
+      //risk_level = RiskLevel::Medium;
     }
   }
 
-  return BoundingBox::GetNewEstimate(selectivity, risk_level);
+  return selectivity;
+  //return BoundingBox::GetNewEstimate(selectivity, risk_level);
 }
 
 }  // Anonymous namespace.

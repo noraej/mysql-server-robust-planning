@@ -4873,7 +4873,14 @@ void CostingReceiver::ProposeNestedLoopJoin(
       std::max(0.0, outer->num_output_rows() - 1.0);
 
   join_path.set_cost(outer->cost() + first_loop_cost + subsequent_loops_cost);
-  join_path.set_cost(BoundingBox::GetUpperBound(join_path.cost(), RiskLevel::Medium));
+  // Checks whether the nested loop is indexed or not
+  // An indexed nested loop has low risk
+  if (join_path.nested_loop_join().inner->type == AccessPath::REF || join_path.nested_loop_join().inner->type == AccessPath::EQ_REF) {
+    join_path.set_cost(BoundingBox::GetUpperBound(join_path.cost(), RiskLevel::Low));
+  } else {
+    join_path.set_cost(BoundingBox::GetUpperBound(join_path.cost(), RiskLevel::Medium));
+  }
+
   join_path.set_cost_before_filter(join_path.cost());
 
   // Nested-loop preserves any ordering from the outer side. Note that actually,
