@@ -367,7 +367,7 @@ double EstimateEqualPredicateSelectivity(const EqualFieldArray &equal_fields,
   on a 0..1 scale (where 1.0 lets all records through).
  */
 double EstimateSelectivity(THD *thd, Item *condition,
-                           const CompanionSet &companion_set, string *trace) {
+                           const CompanionSet &companion_set, string *trace, RiskLevel *risk_level) {
   // If the item is a true constant, we can say immediately whether it passes
   // or filters all rows. (Actually, calling get_filtering_effect() below
   // would crash if used_tables() is zero, which it is for const items.)
@@ -404,7 +404,8 @@ double EstimateSelectivity(THD *thd, Item *condition,
                 " - used an index or a histogram for %s, selectivity = %g\n",
                 ItemToString(condition).c_str(), selectivity);
           }
-          return BoundingBox::GetNewEstimate(selectivity, RiskLevel::Low);
+          *risk_level = RiskLevel::Low;
+          return BoundingBox::GetNewEstimate(selectivity, *risk_level);
         }
       } else if (left->type() == Item::FIELD_ITEM) {
         // field = <anything> (except field = field).
@@ -472,7 +473,8 @@ double EstimateSelectivity(THD *thd, Item *condition,
             " - used an index or a histogram for %s, selectivity = %g\n",
             ItemToString(condition).c_str(), selectivity);
       }
-      return BoundingBox::GetNewEstimate(selectivity, RiskLevel::MediumHigh);
+      *risk_level = RiskLevel::MediumHigh;
+      return BoundingBox::GetNewEstimate(selectivity, *risk_level);
     }
   }
 
@@ -503,5 +505,6 @@ double EstimateSelectivity(THD *thd, Item *condition,
     *trace += StringPrintf(" - fallback selectivity for %s = %g\n",
                            ItemToString(condition).c_str(), selectivity);
   }
-  return BoundingBox::GetNewEstimate(selectivity, RiskLevel::High);
+  *risk_level = RiskLevel::High;
+  return BoundingBox::GetNewEstimate(selectivity, *risk_level);
 }

@@ -2863,10 +2863,13 @@ int AddPredicate(THD *thd, Item *condition, bool was_join_condition,
     companion_set = companion_collection->Find(used_tables);
   }
 
+  //Todo leag: save risk_level
+  RiskLevel risk_level = RiskLevel::Low;
   pred.selectivity =
       companion_set != nullptr
-          ? EstimateSelectivity(thd, condition, *companion_set, trace)
-          : EstimateSelectivity(thd, condition, CompanionSet(), trace);
+          ? EstimateSelectivity(thd, condition, *companion_set, trace, &risk_level)
+          : EstimateSelectivity(thd, condition, CompanionSet(), trace, &risk_level);
+  pred.condition->risk_level = risk_level;
 
   pred.was_join_condition = was_join_condition;
   pred.source_multiple_equality_idx = source_multiple_equality_idx;
@@ -3021,13 +3024,15 @@ void AddCycleEdges(THD *thd, const Mem_root_array<Item *> &cycle_inducing_edges,
 
       expr->companion_set = companion_collection.Find(expr->tables_in_subtree);
 
+      //Todo leag: save risk level
+      RiskLevel risk_level = RiskLevel::Low;
       double selectivity =
-          EstimateSelectivity(thd, cond, *expr->companion_set, trace);
+          EstimateSelectivity(thd, cond, *expr->companion_set, trace, &risk_level);
       const size_t estimated_bytes_per_row =
           EstimateRowWidthForJoin(*graph, expr);
       graph->edges.push_back(JoinPredicate{
-          expr, selectivity, estimated_bytes_per_row,
-          /*functional_dependencies=*/0, /*functional_dependencies_idx=*/{}});
+        expr, selectivity, risk_level, estimated_bytes_per_row,
+        /*functional_dependencies=*/0, /*functional_dependencies_idx=*/{}});
     } else {
       // Skip this item if it is a duplicate (this can
       // happen with multiple equalities in particular).
@@ -3050,8 +3055,11 @@ void AddCycleEdges(THD *thd, const Mem_root_array<Item *> &cycle_inducing_edges,
       if (dup) {
         continue;
       }
+      //Todo leag: save risk level
+      RiskLevel risk_level = RiskLevel::Low;
       pred->selectivity *=
-          EstimateSelectivity(thd, cond, *expr->companion_set, trace);
+          EstimateSelectivity(thd, cond, *expr->companion_set, trace, &risk_level);
+      pred->risk_level = risk_level;
     }
     if (cond->type() == Item::FUNC_ITEM &&
         down_cast<Item_func *>(cond)->contains_only_equi_join_condition()) {
@@ -3194,13 +3202,21 @@ void MakeJoinGraphFromRelationalExpression(THD *thd, RelationalExpression *expr,
                            GenerateExpressionLabel(expr).c_str());
   }
   double selectivity = 1.0;
+  RiskLevel highest_risk_level = RiskLevel::Low;
+  RiskLevel risk_level = RiskLevel::Low;
   for (Item *item : expr->equijoin_conditions) {
     selectivity *=
-        EstimateSelectivity(current_thd, item, *expr->companion_set, trace);
+        EstimateSelectivity(current_thd, item, *expr->companion_set, trace, &risk_level);
+    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(highest_risk_level)) {
+      highest_risk_level = risk_level;
+    }
   }
   for (Item *item : expr->join_conditions) {
     selectivity *=
-        EstimateSelectivity(current_thd, item, CompanionSet(), trace);
+        EstimateSelectivity(current_thd, item, CompanionSet(), trace, &risk_level);
+    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(highest_risk_level)) {
+      highest_risk_level = risk_level;
+    }
   }
   if (trace != nullptr &&
       expr->equijoin_conditions.size() + expr->join_conditions.size() > 1) {
@@ -3209,7 +3225,7 @@ void MakeJoinGraphFromRelationalExpression(THD *thd, RelationalExpression *expr,
 
   const size_t estimated_bytes_per_row = EstimateRowWidthForJoin(*graph, expr);
   graph->edges.push_back(JoinPredicate{
-      expr, selectivity, estimated_bytes_per_row,
+      expr, selectivity, highest_risk_level, estimated_bytes_per_row,
       /*functional_dependencies=*/0, /*functional_dependencies_idx=*/{}});
 }
 
@@ -3281,7 +3297,7 @@ void AddMultipleEqualityPredicate(THD *thd,
     const size_t estimated_bytes_per_row =
         EstimateRowWidthForJoin(*graph, expr);
     graph->edges.push_back(JoinPredicate{expr, selectivity,
-                                         estimated_bytes_per_row,
+                                         RiskLevel::Low, estimated_bytes_per_row,
                                          /*functional_dependencies=*/0,
                                          /*functional_dependencies_idx=*/{}});
   }
@@ -3309,10 +3325,16 @@ void CompleteFullMeshForMultipleEqualities(
     THD *thd, const Mem_root_array<Item_equal *> &multiple_equalities,
     CompanionSetCollection &companion_collection, JoinHypergraph *graph,
     string *trace) {
+  RiskLevel highest_risk_level = RiskLevel::Low;
+  RiskLevel risk_level = RiskLevel::Low;
   for (Item_equal *item_equal : multiple_equalities) {
     double selectivity = EstimateSelectivity(
         thd, item_equal, *companion_collection.Find(item_equal->used_tables()),
-        trace);
+        trace, &risk_level);
+
+    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(highest_risk_level)) {
+      highest_risk_level = risk_level;
+    }
 
     for (Item_field &left_field : item_equal->get_fields()) {
       const int left_table_idx =
@@ -3731,6 +3753,8 @@ bool MakeJoinHypergraph(THD *thd, string *trace, JoinHypergraph *graph,
   }
 
   // Table filters should be applied at the bottom, without extending the TES.
+  RiskLevel highest_risk_level = RiskLevel::Low;
+  RiskLevel risk_level = RiskLevel::Low;
   for (Item *condition : table_filters) {
     Predicate pred;
     pred.condition = condition;
@@ -3740,7 +3764,10 @@ bool MakeJoinHypergraph(THD *thd, string *trace, JoinHypergraph *graph,
     assert(has_single_bit(pred.total_eligibility_set));
     pred.selectivity = EstimateSelectivity(
         thd, condition, *companion_collection.Find(condition->used_tables()),
-        trace);
+        trace, &risk_level);
+    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(highest_risk_level)) {
+      highest_risk_level = risk_level;
+    }
     pred.functional_dependencies_idx.init(thd->mem_root);
     graph->predicates.push_back(std::move(pred));
   }

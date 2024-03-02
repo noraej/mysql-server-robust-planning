@@ -44,6 +44,7 @@ class Item_func_eq;
 struct CachedPropertiesForPredicate {
   Mem_root_array<ContainedSubquery> contained_subqueries;
   double selectivity;
+  RiskLevel risk_level = RiskLevel::Low;
 
   // For equijoins only: A bitmap of which sargable predicates
   // are part of the same multi-equality as this one (except the

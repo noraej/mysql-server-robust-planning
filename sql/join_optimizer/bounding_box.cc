@@ -2,11 +2,12 @@
 // Created by leag on 19.02.24.
 //
 #include "sql/join_optimizer/bounding_box.h"
+#include <type_traits>
 
 double BoundingBox::incremental_step = 0.1;
 double BoundingBox::decremental_step = 0.05;
-double BoundingBox::alpha = 0.7;
-double BoundingBox::beta = 0.2;
+double BoundingBox::alpha = 0.2;
+double BoundingBox::beta = 0.7;
 double BoundingBox::gamma = 0.1;
 
 double BoundingBox::GetUpperBound(const double estimate, RiskLevel risk_level) {

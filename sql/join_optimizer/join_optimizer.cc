@@ -3825,7 +3825,7 @@ void MoveDegenerateJoinConditionToFilter(THD *thd, Query_block *query_block,
   new_expr->right = expr->right;
 
   JoinPredicate *new_edge = new (thd->mem_root) JoinPredicate{
-      new_expr, /*selectivity=*/1.0, (*edge)->estimated_bytes_per_row,
+      new_expr, /*selectivity=*/1.0, (*edge)->risk_level, (*edge)->estimated_bytes_per_row,
       (*edge)->functional_dependencies, /*functional_dependencies_idx=*/{}};
 
   // Use the filter path and the new join edge with no condition for creating
@@ -4450,6 +4450,9 @@ void CostingReceiver::ApplyDelayedPredicatesAfterJoin(
     if (pred.source_multiple_equality_idx != -1) {
       multiple_equality_bitmap |= uint64_t{1}
                                   << pred.source_multiple_equality_idx;
+    }
+    if (static_cast<std::underlying_type_t<RiskLevel>>(pred.condition->risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(join_path->risk_level)) {
+        join_path->risk_level = pred.condition->risk_level;
     }
   }
 
@@ -6304,13 +6307,15 @@ void ApplyHavingOrQualifyCondition(
     // We don't currently bother with materializing subqueries
     // in HAVING, as they should be rare.
     filter_path.filter().materialize_subqueries = false;
+    RiskLevel risk_level = RiskLevel::Low;
     filter_path.set_num_output_rows(
         root_path->num_output_rows() *
-        EstimateSelectivity(thd, having_cond, CompanionSet(), trace));
+        EstimateSelectivity(thd, having_cond, CompanionSet(), trace, &risk_level));
 
     const FilterCost filter_cost = EstimateFilterCost(
         thd, root_path->num_output_rows(), having_cond, query_block);
 
+    filter_path.risk_level = risk_level;
     filter_path.set_init_cost(root_path->init_cost() +
                               filter_cost.init_cost_if_not_materialized);
 
@@ -7148,7 +7153,10 @@ static void PossiblyAddSargableCondition(THD *thd, Item *item,
       // to it in bitmaps.
       Predicate p;
       p.condition = eq_item;
-      p.selectivity = EstimateSelectivity(thd, eq_item, companion_set, trace);
+      //Todo leag: Set risk level to accesspath
+      RiskLevel risk_level = RiskLevel::Low;
+      p.selectivity = EstimateSelectivity(thd, eq_item, companion_set, trace, &risk_level);
+      p.condition->risk_level = risk_level;
       p.used_nodes =
           GetNodeMapFromTableMap(eq_item->used_tables() & ~PSEUDO_TABLE_BITS,
                                  graph->table_num_to_node_num);
@@ -7233,8 +7241,11 @@ static void CacheCostInfoForJoinConditions(THD *thd,
     edge.expr->properties_for_join_conditions.init(thd->mem_root);
     for (Item_eq_base *cond : edge.expr->equijoin_conditions) {
       CachedPropertiesForPredicate properties;
+      //Todo leag: set risk level to accesspath
+      RiskLevel risk_level = RiskLevel::Low;
       properties.selectivity =
-          EstimateSelectivity(thd, cond, *edge.expr->companion_set, trace);
+          EstimateSelectivity(thd, cond, *edge.expr->companion_set, trace, &risk_level);
+      properties.risk_level = risk_level;
       properties.contained_subqueries.init(thd->mem_root);
       FindContainedSubqueries(
           cond, query_block, [&properties](const ContainedSubquery &subquery) {
@@ -7260,8 +7271,10 @@ static void CacheCostInfoForJoinConditions(THD *thd,
     }
     for (Item *cond : edge.expr->join_conditions) {
       CachedPropertiesForPredicate properties;
+      //Todo leag: set risk level on accesspath
+      RiskLevel risk_level = RiskLevel::Low;
       properties.selectivity =
-          EstimateSelectivity(thd, cond, CompanionSet(), trace);
+          EstimateSelectivity(thd, cond, CompanionSet(), trace, &risk_level);
       properties.contained_subqueries.init(thd->mem_root);
       FindContainedSubqueries(
           cond, query_block, [&properties](const ContainedSubquery &subquery) {
@@ -7747,6 +7760,9 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
             FilterCost cost =
                 EstimateFilterCost(thd, root_path->num_output_rows(),
                                    graph.predicates[i].contained_subqueries);
+            if (static_cast<std::underlying_type_t<RiskLevel>>(graph.predicates[i].condition->risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(path.risk_level)) {
+              path.risk_level = graph.predicates[i].condition->risk_level;
+            }
             if (materialize_subqueries) {
               path.set_cost(path.cost() + cost.cost_if_materialized);
               init_once_cost += cost.cost_to_materialize;
@@ -8058,5 +8074,6 @@ AccessPath *FindBestQueryPlan(THD *thd, Query_block *query_block,
     root_path = FindBestQueryPlanInner(thd, query_block, &retry,
                                        &next_retry_subgraph_pairs, trace);
   }
+  printf("\nFinal plan has risk level: %d\n", static_cast<std::underlying_type_t<RiskLevel>>(root_path->risk_level));
   return root_path;
 }

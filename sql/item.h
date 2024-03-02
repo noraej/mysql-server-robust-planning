@@ -39,6 +39,7 @@
 
 #include "decimal.h"
 #include "field_types.h"  // enum_field_types
+#include "join_optimizer/bounding_box.h"
 #include "lex_string.h"
 #include "memory_debugging.h"
 #include "my_alloc.h"
@@ -997,6 +998,8 @@ class Item : public Parse_tree_node {
     FIELD_BIT_ITEM,
     VALUES_COLUMN_ITEM
   };
+
+  RiskLevel risk_level = RiskLevel::Low;
 
   enum cond_result { COND_UNDEF, COND_OK, COND_TRUE, COND_FALSE };
 

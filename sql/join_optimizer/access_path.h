@@ -78,6 +78,7 @@ struct RelationalExpression;
 struct JoinPredicate {
   RelationalExpression *expr;
   double selectivity;
+  RiskLevel risk_level = RiskLevel::Low;
 
   // If this join is made using a hash join, estimates the width
   // of each row as stored in the hash table, in bytes.
@@ -393,13 +394,38 @@ struct AccessPath {
 
   double cost_before_filter() const { return m_cost_before_filter; }*/
 
-  double cost() const { return BoundingBox::GetNewCost(m_cost, risk_level); }
+  double cost() const { return BoundingBox::GetNewCost(m_cost, get_risk_level()); }
 
-  double init_cost() const { return BoundingBox::GetNewCost(m_init_cost, risk_level); }
+  double init_cost() const { return BoundingBox::GetNewCost(m_init_cost, get_risk_level()); }
 
-  double init_once_cost() const { return BoundingBox::GetNewCost(m_init_once_cost, risk_level); }
+  double init_once_cost() const { return BoundingBox::GetNewCost(m_init_once_cost, get_risk_level()); }
 
-  double cost_before_filter() const { return BoundingBox::GetNewCost(m_cost_before_filter, risk_level); }
+  double cost_before_filter() const { return BoundingBox::GetNewCost(m_cost_before_filter, get_risk_level()); }
+
+  RiskLevel get_risk_level() const {
+    /*if (type == NESTED_LOOP_JOIN) {
+      auto highest_risk = std::max(this->nested_loop_join().outer->risk_level, this->nested_loop_join().inner->risk_level);
+      highest_risk = std::max(highest_risk, this->nested_loop_join().join_predicate->risk_level);
+      return static_cast<RiskLevel>(highest_risk);
+    } if (type == NESTED_LOOP_SEMIJOIN_WITH_DUPLICATE_REMOVAL) {
+      auto highest_risk = std::max(this->nested_loop_join().outer->risk_level, this->nested_loop_join().inner->risk_level);
+      highest_risk = std::max(highest_risk, this->nested_loop_join().join_predicate->risk_level);
+      return static_cast<RiskLevel>(highest_risk);
+    } if (type == BKA_JOIN) {
+      auto highest_risk = std::max(this->nested_loop_join().outer->risk_level, this->nested_loop_join().inner->risk_level);
+      highest_risk = std::max(highest_risk, this->nested_loop_join().join_predicate->risk_level);
+      return static_cast<RiskLevel>(highest_risk);
+    } if (type == HASH_JOIN) {
+      auto highest_risk = std::max(this->hash_join().outer->risk_level, this->hash_join().inner->risk_level);
+      highest_risk = std::max(highest_risk, this->hash_join().join_predicate->risk_level);
+      return static_cast<RiskLevel>(highest_risk);
+    } if (type == FILTER) {
+      return this->risk_level;
+    }*/
+    if (risk_level != RiskLevel::Low)
+      printf("\nAnnen risk level enn low\n");
+    return risk_level;
+  }
 
   void set_cost(double val) {
     assert(val >= 0.0 || val == kUnknownCost);
@@ -1312,6 +1338,7 @@ inline void CopyBasicProperties(const AccessPath &from, AccessPath *to) {
   to->safe_for_rowid = from.safe_for_rowid;
   to->ordering_state = from.ordering_state;
   to->has_group_skip_scan = from.has_group_skip_scan;
+  to->risk_level= from.risk_level;
 }
 
 // Trivial factory functions for all of the types of access paths above.

@@ -23,6 +23,8 @@
 #ifndef SQL_JOIN_OPTIMIZER_ESTIMATE_SELECTIVITY
 #define SQL_JOIN_OPTIMIZER_ESTIMATE_SELECTIVITY
 
+#include "bounding_box.h"
+
 #include <string>
 
 class CompanionSet;
@@ -35,6 +37,6 @@ class Item;
  */
 double EstimateSelectivity(THD *thd, Item *condition,
                            const CompanionSet &companion_set,
-                           std::string *trace);
+                           std::string *trace, RiskLevel *risk_level);
 
 #endif  // SQL_JOIN_OPTIMIZER_ESTIMATE_SELECTIVITY
