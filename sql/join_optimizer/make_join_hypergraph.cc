@@ -2863,7 +2863,6 @@ int AddPredicate(THD *thd, Item *condition, bool was_join_condition,
     companion_set = companion_collection->Find(used_tables);
   }
 
-  //Todo leag: save risk_level
   RiskLevel risk_level = RiskLevel::Low;
   pred.selectivity =
       companion_set != nullptr
@@ -3024,7 +3023,6 @@ void AddCycleEdges(THD *thd, const Mem_root_array<Item *> &cycle_inducing_edges,
 
       expr->companion_set = companion_collection.Find(expr->tables_in_subtree);
 
-      //Todo leag: save risk level
       RiskLevel risk_level = RiskLevel::Low;
       double selectivity =
           EstimateSelectivity(thd, cond, *expr->companion_set, trace, &risk_level);

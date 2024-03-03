@@ -95,7 +95,7 @@ AccessPath *NewSortAccessPath(THD *thd, AccessPath *child, Filesort *filesort,
   path->type = AccessPath::SORT;
   path->count_examined_rows = count_examined_rows;
   path->sort().child = child;
-  path->risk_level = child->risk_level;
+  path->set_risk_level(child->risk_level);
   path->sort().filesort = filesort;
   path->sort().order = order;
   path->sort().remove_duplicates = filesort->m_remove_duplicates;
@@ -130,7 +130,7 @@ AccessPath *NewDeleteRowsAccessPath(THD *thd, AccessPath *child,
   path->delete_rows().child = child;
   path->delete_rows().tables_to_delete_from = delete_tables;
   path->delete_rows().immediate_tables = immediate_tables;
-  path->risk_level = child->risk_level;
+  path->set_risk_level(child->risk_level);
   return path;
 }
 
@@ -143,7 +143,7 @@ AccessPath *NewUpdateRowsAccessPath(THD *thd, AccessPath *child,
   path->update_rows().child = child;
   path->update_rows().tables_to_update = update_tables;
   path->update_rows().immediate_tables = immediate_tables;
-  path->risk_level = child->risk_level;
+  path->set_risk_level(child->risk_level);
   return path;
 }
 
@@ -1439,9 +1439,7 @@ static void MoveFilterPredicatesIntoHashJoinCondition(
     Item *condition = predicate.condition;
     // Conditions with subqueries are not moved.
     if (condition->has_subquery()) continue;
-    if (static_cast<std::underlying_type_t<RiskLevel>>(condition->risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(path->risk_level)) {
-      path->risk_level = condition->risk_level;
-    }
+    path->set_risk_level(condition->risk_level);
     moved_predicates.SetBit(filter_idx);
     if (condition->type() == Item::FUNC_ITEM &&
         down_cast<Item_func *>(condition)
@@ -1479,11 +1477,10 @@ static void MoveFilterPredicatesIntoHashJoinCondition(
   join_predicate->expr = expr;
   param.join_predicate = join_predicate;
 
-  auto highest_risk = std::max(path->hash_join().outer->risk_level, path->hash_join().inner->risk_level);
-  highest_risk = std::max(highest_risk, path->hash_join().join_predicate->risk_level);
-  if (static_cast<std::underlying_type_t<RiskLevel>>(highest_risk) > static_cast<std::underlying_type_t<RiskLevel>>(path->risk_level)) {
-    path->risk_level = static_cast<RiskLevel>(highest_risk);
-  }
+  path->set_risk_level(path->hash_join().outer->risk_level);
+  path->set_risk_level(path->hash_join().inner->risk_level);
+  path->set_risk_level(path->hash_join().join_predicate->risk_level);
+  path->set_risk_level(param.join_predicate->risk_level);
 
   path->filter_predicates = OverflowBitset::Xor(
       thd->mem_root, path->filter_predicates, std::move(moved_predicates));
@@ -1553,12 +1550,10 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
     assert(!items.is_empty());
 
     AccessPath *filter_path = new (thd->mem_root) AccessPath;
-    filter_path->risk_level = highest_risk_level;
+    filter_path->set_risk_level(highest_risk_level);
     filter_path->type = AccessPath::FILTER;
     filter_path->filter().child = right_path;
-    if (filter_path->filter().child->risk_level > risk_level) {
-      filter_path->risk_level = filter_path->filter().child->risk_level;
-    }
+    filter_path->set_risk_level(filter_path->filter().child->risk_level);
     filter_path->has_group_skip_scan = right_path->has_group_skip_scan;
 
     // We don't bother trying to materialize subqueries in join conditions,
@@ -1571,9 +1566,9 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
     filter_path->set_num_output_rows(filter_rows);
 
     path->nested_loop_join().inner = filter_path;
-    auto highest_risk = std::max(path->nested_loop_join().outer->risk_level, path->nested_loop_join().inner->risk_level);
-    highest_risk = std::max(highest_risk, path->nested_loop_join().join_predicate->risk_level);
-    path->risk_level = static_cast<RiskLevel>(highest_risk);
+    path->set_risk_level(path->nested_loop_join().outer->risk_level);
+    path->set_risk_level(path->nested_loop_join().inner->risk_level);
+    path->set_risk_level(path->nested_loop_join().join_predicate->risk_level);
 
     // Since multiple root paths may have their filters expanded,
     // and the same nested loop may be a subpath in several
@@ -1605,7 +1600,7 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
   new_path->filter_predicates.Clear();
   new_path->set_num_output_rows(path->num_output_rows_before_filter);
   new_path->set_cost(path->cost_before_filter());
-  new_path->risk_level = path->risk_level;
+  new_path->set_risk_level(path->risk_level);
 
   // We don't really know how much of init_cost comes from the filter,
   // but we need to heed the invariant that cost >= init_cost

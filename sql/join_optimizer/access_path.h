@@ -386,45 +386,31 @@ struct AccessPath {
 
   RiskLevel risk_level = RiskLevel::Low;
 
-  /*double cost() const { return m_cost; }
+  double cost() const { return m_cost; }
 
   double init_cost() const { return m_init_cost; }
 
   double init_once_cost() const { return m_init_once_cost; }
 
-  double cost_before_filter() const { return m_cost_before_filter; }*/
+  double cost_before_filter() const { return m_cost_before_filter; }
 
-  double cost() const { return BoundingBox::GetNewCost(m_cost, get_risk_level()); }
+  /*double cost() const { return BoundingBox::GetNewCost(m_cost, get_risk_level()); }
 
   double init_cost() const { return BoundingBox::GetNewCost(m_init_cost, get_risk_level()); }
 
   double init_once_cost() const { return BoundingBox::GetNewCost(m_init_once_cost, get_risk_level()); }
 
-  double cost_before_filter() const { return BoundingBox::GetNewCost(m_cost_before_filter, get_risk_level()); }
+  double cost_before_filter() const { return BoundingBox::GetNewCost(m_cost_before_filter, get_risk_level()); }*/
 
   RiskLevel get_risk_level() const {
-    /*if (type == NESTED_LOOP_JOIN) {
-      auto highest_risk = std::max(this->nested_loop_join().outer->risk_level, this->nested_loop_join().inner->risk_level);
-      highest_risk = std::max(highest_risk, this->nested_loop_join().join_predicate->risk_level);
-      return static_cast<RiskLevel>(highest_risk);
-    } if (type == NESTED_LOOP_SEMIJOIN_WITH_DUPLICATE_REMOVAL) {
-      auto highest_risk = std::max(this->nested_loop_join().outer->risk_level, this->nested_loop_join().inner->risk_level);
-      highest_risk = std::max(highest_risk, this->nested_loop_join().join_predicate->risk_level);
-      return static_cast<RiskLevel>(highest_risk);
-    } if (type == BKA_JOIN) {
-      auto highest_risk = std::max(this->nested_loop_join().outer->risk_level, this->nested_loop_join().inner->risk_level);
-      highest_risk = std::max(highest_risk, this->nested_loop_join().join_predicate->risk_level);
-      return static_cast<RiskLevel>(highest_risk);
-    } if (type == HASH_JOIN) {
-      auto highest_risk = std::max(this->hash_join().outer->risk_level, this->hash_join().inner->risk_level);
-      highest_risk = std::max(highest_risk, this->hash_join().join_predicate->risk_level);
-      return static_cast<RiskLevel>(highest_risk);
-    } if (type == FILTER) {
-      return this->risk_level;
-    }*/
-    if (risk_level != RiskLevel::Low)
-      printf("\nAnnen risk level enn low\n");
+    /*if (risk_level != RiskLevel::Low)
+      printf("\nAnnen risk level enn low\n");*/
     return risk_level;
+  }
+
+  void set_risk_level(RiskLevel risk_level) {
+    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(this->risk_level))
+      this->risk_level = risk_level;
   }
 
   void set_cost(double val) {
@@ -917,7 +903,9 @@ struct AccessPath {
 
   double num_output_rows() const { return m_num_output_rows; }
 
-  void set_num_output_rows(double val) { m_num_output_rows = val; }
+  void set_num_output_rows(double val) {
+    m_num_output_rows = BoundingBox::GetNewCost(val, risk_level);
+  }
 
  private:
   /// Expected number of output rows.

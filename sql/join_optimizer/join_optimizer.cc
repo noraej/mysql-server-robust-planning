@@ -4212,8 +4212,8 @@ void CostingReceiver::ProposeHashJoin(
       ~(left | right);
   join_path.hash_join().outer = left_path;
   join_path.hash_join().inner = right_path;
-  auto highest_risk = std::max(static_cast<std::underlying_type_t<RiskLevel>>(left_path->risk_level), static_cast<std::underlying_type_t<RiskLevel>>(right_path->risk_level));
-  join_path.risk_level = static_cast<RiskLevel>(highest_risk);
+  join_path.set_risk_level(left_path->risk_level);
+  join_path.set_risk_level(right_path->risk_level);
   join_path.hash_join().join_predicate = edge;
   join_path.hash_join().store_rowids = false;
   join_path.hash_join().rewrite_semi_to_inner = rewrite_semi_to_inner;
@@ -4451,9 +4451,7 @@ void CostingReceiver::ApplyDelayedPredicatesAfterJoin(
       multiple_equality_bitmap |= uint64_t{1}
                                   << pred.source_multiple_equality_idx;
     }
-    if (static_cast<std::underlying_type_t<RiskLevel>>(pred.condition->risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(join_path->risk_level)) {
-        join_path->risk_level = pred.condition->risk_level;
-    }
+    join_path->set_risk_level(pred.condition->risk_level);
   }
 
   double materialize_cost = 0.0;
@@ -4712,8 +4710,8 @@ void CostingReceiver::ProposeNestedLoopJoin(
   join_path.nested_loop_join().already_expanded_predicates = false;
   join_path.nested_loop_join().outer = left_path;
   join_path.nested_loop_join().inner = right_path;
-  auto highest_risk = std::max(static_cast<std::underlying_type_t<RiskLevel>>(left_path->risk_level), static_cast<std::underlying_type_t<RiskLevel>>(right_path->risk_level));
-  join_path.risk_level = static_cast<RiskLevel>(highest_risk);
+  join_path.set_risk_level(left_path->risk_level);
+  join_path.set_risk_level(right_path->risk_level);
   if (rewrite_semi_to_inner) {
     // This join is a semijoin (which is non-commutative), but the caller wants
     // us to try to invert it anyway; or to be precise, it has already inverted
@@ -6315,7 +6313,7 @@ void ApplyHavingOrQualifyCondition(
     const FilterCost filter_cost = EstimateFilterCost(
         thd, root_path->num_output_rows(), having_cond, query_block);
 
-    filter_path.risk_level = risk_level;
+    filter_path.set_risk_level(risk_level);
     filter_path.set_init_cost(root_path->init_cost() +
                               filter_cost.init_cost_if_not_materialized);
 
@@ -7760,9 +7758,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
             FilterCost cost =
                 EstimateFilterCost(thd, root_path->num_output_rows(),
                                    graph.predicates[i].contained_subqueries);
-            if (static_cast<std::underlying_type_t<RiskLevel>>(graph.predicates[i].condition->risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(path.risk_level)) {
-              path.risk_level = graph.predicates[i].condition->risk_level;
-            }
+            path.set_risk_level(graph.predicates[i].condition->risk_level);
             if (materialize_subqueries) {
               path.set_cost(path.cost() + cost.cost_if_materialized);
               init_once_cost += cost.cost_to_materialize;
@@ -8075,5 +8071,7 @@ AccessPath *FindBestQueryPlan(THD *thd, Query_block *query_block,
                                        &next_retry_subgraph_pairs, trace);
   }
   printf("\nFinal plan has risk level: %d\n", static_cast<std::underlying_type_t<RiskLevel>>(root_path->risk_level));
+  printf("\nLevel test. Should be high: %d\n", static_cast<std::underlying_type_t<RiskLevel>>(RiskLevel::High));
+  printf("\nLevel test. Should be low: %d\n", static_cast<std::underlying_type_t<RiskLevel>>(RiskLevel::Low));
   return root_path;
 }
