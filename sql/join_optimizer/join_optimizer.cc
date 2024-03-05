@@ -82,6 +82,7 @@
 #include "sql/join_optimizer/overflow_bitset.h"
 #include "sql/join_optimizer/print_utils.h"
 #include "sql/join_optimizer/relational_expression.h"
+#include "sql/join_optimizer/risk_level.h"
 #include "sql/join_optimizer/secondary_engine_costing_flags.h"
 #include "sql/join_optimizer/subgraph_enumeration.h"
 #include "sql/join_optimizer/walk_access_paths.h"
@@ -2973,6 +2974,7 @@ bool CostingReceiver::ProposeTableScan(
     AccessPath *materialize_path =
         NewMaterializeInformationSchemaTableAccessPath(m_thd, new_path, tl,
                                                        /*condition=*/nullptr);
+    materialize_path->set_risk_level(path.risk_level);
     materialize_path->num_output_rows_before_filter = num_output_rows;
     materialize_path->set_init_cost(path.cost());       // Rudimentary.
     materialize_path->set_init_once_cost(path.cost());  // Rudimentary.
@@ -3554,7 +3556,7 @@ void CostingReceiver::ApplyPredicatesForBaseTable(
       filter_predicates.SetBit(i);
       FilterCost cost =
           EstimateFilterCost(m_thd, path->num_output_rows(),
-                             m_graph->predicates[i].contained_subqueries);
+                             m_graph->predicates[i].contained_subqueries, path->risk_level);
       if (materialize_subqueries) {
         path->set_cost(path->cost() + cost.cost_if_materialized);
         materialize_cost += cost.cost_to_materialize;
@@ -3812,7 +3814,7 @@ void MoveDegenerateJoinConditionToFilter(THD *thd, Query_block *query_block,
   filter_path->set_cost(filter_path->cost() +
                         EstimateFilterCost(thd,
                                            (*right_path)->num_output_rows(),
-                                           filter_cond, query_block)
+                                           filter_cond, query_block, (*right_path)->risk_level)
                             .cost_if_not_materialized);
 
   // Build a new join predicate with no join condition.
@@ -3827,6 +3829,8 @@ void MoveDegenerateJoinConditionToFilter(THD *thd, Query_block *query_block,
   JoinPredicate *new_edge = new (thd->mem_root) JoinPredicate{
       new_expr, /*selectivity=*/1.0, (*edge)->risk_level, (*edge)->estimated_bytes_per_row,
       (*edge)->functional_dependencies, /*functional_dependencies_idx=*/{}};
+
+  filter_path->set_risk_level(new_edge->risk_level);
 
   // Use the filter path and the new join edge with no condition for creating
   // the hash join.
@@ -4082,6 +4086,7 @@ AccessPath *DeduplicateForSemijoin(THD *thd, AccessPath *path,
     dedup_path = NewRemoveDuplicatesAccessPath(thd, path, semijoin_group,
                                                semijoin_group_size);
     CopyBasicProperties(*path, dedup_path);
+    dedup_path->set_risk_level(path->risk_level);
     dedup_path->set_num_output_rows(EstimateDistinctRows(
         path->num_output_rows(),
         {semijoin_group, static_cast<size_t>(semijoin_group_size)}, trace));
@@ -4214,6 +4219,7 @@ void CostingReceiver::ProposeHashJoin(
   join_path.hash_join().inner = right_path;
   join_path.set_risk_level(left_path->risk_level);
   join_path.set_risk_level(right_path->risk_level);
+  join_path.set_risk_level(edge->risk_level);
   join_path.hash_join().join_predicate = edge;
   join_path.hash_join().store_rowids = false;
   join_path.hash_join().rewrite_semi_to_inner = rewrite_semi_to_inner;
@@ -4286,14 +4292,15 @@ void CostingReceiver::ProposeHashJoin(
       right_path->cost() + right_path->num_output_rows() * kHashBuildOneRowCost;
   double cost = outer->cost() + build_cost +
                 outer->num_output_rows() * kHashProbeOneRowCost +
-                num_output_rows * kHashReturnOneRowCost;
+                BoundingBox::GetNewCost(num_output_rows, outer->risk_level) * kHashReturnOneRowCost;
 
   // Note: This isn't strictly correct if the non-equijoin conditions
   // have selectivities far from 1.0; the cost should be calculated
   // on the number of rows after the equijoin conditions, but before
   // the non-equijoin conditions.
-  cost += num_output_rows * edge->expr->join_conditions.size() *
+  cost += BoundingBox::GetNewCost(num_output_rows, edge->risk_level) * edge->expr->join_conditions.size() *
           kApplyOneFilterCost;
+
 
   join_path.num_output_rows_before_filter = num_output_rows;
   join_path.set_cost_before_filter(cost);
@@ -4488,7 +4495,7 @@ void CostingReceiver::ApplyDelayedPredicatesAfterJoin(
                     multiple_equality_bitmap)) {
         if (!subsumed) {
           FilterCost cost = EstimateFilterCost(
-              m_thd, join_path->num_output_rows(), pred.contained_subqueries);
+              m_thd, join_path->num_output_rows(), pred.contained_subqueries, join_path->risk_level);
           if (materialize_subqueries) {
             join_path->set_cost(join_path->cost() + cost.cost_if_materialized);
             materialize_cost += cost.cost_to_materialize;
@@ -4807,7 +4814,7 @@ void CostingReceiver::ProposeNestedLoopJoin(
       if (!subsumed) {
         equijoin_predicates.SetBit(join_cond_idx);
         filter_cost += EstimateFilterCost(m_thd, rows_after_filtering,
-                                          properties.contained_subqueries)
+                                          properties.contained_subqueries, edge->risk_level)
                            .cost_if_not_materialized;
         rows_after_filtering *= properties.selectivity;
       }
@@ -4815,7 +4822,7 @@ void CostingReceiver::ProposeNestedLoopJoin(
     for (const CachedPropertiesForPredicate &properties :
          edge->expr->properties_for_join_conditions) {
       filter_cost += EstimateFilterCost(m_thd, rows_after_filtering,
-                                        properties.contained_subqueries)
+                                        properties.contained_subqueries, edge->risk_level)
                          .cost_if_not_materialized;
       rows_after_filtering *= properties.selectivity;
     }
@@ -6309,11 +6316,12 @@ void ApplyHavingOrQualifyCondition(
     filter_path.set_num_output_rows(
         root_path->num_output_rows() *
         EstimateSelectivity(thd, having_cond, CompanionSet(), trace, &risk_level));
+    root_path->set_risk_level(risk_level);
 
     const FilterCost filter_cost = EstimateFilterCost(
-        thd, root_path->num_output_rows(), having_cond, query_block);
+        thd, root_path->num_output_rows(), having_cond, query_block, root_path->risk_level);
 
-    filter_path.set_risk_level(risk_level);
+    filter_path.set_risk_level(root_path->risk_level);
     filter_path.set_init_cost(root_path->init_cost() +
                               filter_cost.init_cost_if_not_materialized);
 
@@ -7151,7 +7159,6 @@ static void PossiblyAddSargableCondition(THD *thd, Item *item,
       // to it in bitmaps.
       Predicate p;
       p.condition = eq_item;
-      //Todo leag: Set risk level to accesspath
       RiskLevel risk_level = RiskLevel::Low;
       p.selectivity = EstimateSelectivity(thd, eq_item, companion_set, trace, &risk_level);
       p.condition->risk_level = risk_level;
@@ -7239,7 +7246,6 @@ static void CacheCostInfoForJoinConditions(THD *thd,
     edge.expr->properties_for_join_conditions.init(thd->mem_root);
     for (Item_eq_base *cond : edge.expr->equijoin_conditions) {
       CachedPropertiesForPredicate properties;
-      //Todo leag: set risk level to accesspath
       RiskLevel risk_level = RiskLevel::Low;
       properties.selectivity =
           EstimateSelectivity(thd, cond, *edge.expr->companion_set, trace, &risk_level);
@@ -7269,7 +7275,6 @@ static void CacheCostInfoForJoinConditions(THD *thd,
     }
     for (Item *cond : edge.expr->join_conditions) {
       CachedPropertiesForPredicate properties;
-      //Todo leag: set risk level on accesspath
       RiskLevel risk_level = RiskLevel::Low;
       properties.selectivity =
           EstimateSelectivity(thd, cond, CompanionSet(), trace, &risk_level);
@@ -7755,10 +7760,10 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
               Overlaps(graph.predicates[i].total_eligibility_set,
                        RAND_TABLE_BIT)) {
             filter_predicates.SetBit(i);
+            path.set_risk_level(graph.predicates[i].condition->risk_level);
             FilterCost cost =
                 EstimateFilterCost(thd, root_path->num_output_rows(),
-                                   graph.predicates[i].contained_subqueries);
-            path.set_risk_level(graph.predicates[i].condition->risk_level);
+                                   graph.predicates[i].contained_subqueries, graph.predicates[i].condition->risk_level);
             if (materialize_subqueries) {
               path.set_cost(path.cost() + cost.cost_if_materialized);
               init_once_cost += cost.cost_to_materialize;

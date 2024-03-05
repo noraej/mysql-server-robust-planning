@@ -394,23 +394,14 @@ struct AccessPath {
 
   double cost_before_filter() const { return m_cost_before_filter; }
 
-  /*double cost() const { return BoundingBox::GetNewCost(m_cost, get_risk_level()); }
-
-  double init_cost() const { return BoundingBox::GetNewCost(m_init_cost, get_risk_level()); }
-
-  double init_once_cost() const { return BoundingBox::GetNewCost(m_init_once_cost, get_risk_level()); }
-
-  double cost_before_filter() const { return BoundingBox::GetNewCost(m_cost_before_filter, get_risk_level()); }*/
-
   RiskLevel get_risk_level() const {
-    /*if (risk_level != RiskLevel::Low)
-      printf("\nAnnen risk level enn low\n");*/
     return risk_level;
   }
 
   void set_risk_level(RiskLevel risk_level) {
-    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(this->risk_level))
+    if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(this->risk_level)) {
       this->risk_level = risk_level;
+    }
   }
 
   void set_cost(double val) {
@@ -901,10 +892,12 @@ struct AccessPath {
     return u.update_rows;
   }
 
-  double num_output_rows() const { return m_num_output_rows; }
+  double num_output_rows() const {
+    return BoundingBox::GetNewCost(m_num_output_rows, get_risk_level());
+  }
 
   void set_num_output_rows(double val) {
-    m_num_output_rows = BoundingBox::GetNewCost(val, risk_level);
+    m_num_output_rows = val;
   }
 
  private:
@@ -1714,6 +1707,7 @@ inline AccessPath *NewAppendAccessPath(
   path->append().children = children;
   double num_output_rows = 0.0;
   for (const AppendPathParameters &child : *children) {
+    path->set_risk_level(child.path->risk_level);
     path->set_cost(AddCost(path->cost(), child.path->cost()));
     path->set_init_cost(AddCost(path->init_cost(), child.path->init_cost()));
     path->set_init_once_cost(path->init_once_cost() +

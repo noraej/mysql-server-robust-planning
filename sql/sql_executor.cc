@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "field_types.h"
+#include "join_optimizer/bounding_box.h"
 #include "mem_root_deque.h"
 #include "my_alloc.h"
 #include "my_base.h"
@@ -814,6 +815,7 @@ static AccessPath *NewInvalidatorAccessPathForTable(
   // Copy costs.
   invalidator->set_num_output_rows(path->num_output_rows());
   invalidator->set_cost(path->cost());
+  invalidator->set_risk_level(path->risk_level);
 
   QEP_TAB *tab2 = &qep_tab->join()->qep_tab[table_index_to_invalidate];
   if (tab2->invalidators == nullptr) {
@@ -1492,8 +1494,9 @@ static void RecalculateTablePathCost(AccessPath *path,
 
       const FilterCost filterCost =
           EstimateFilterCost(current_thd, path->num_output_rows(),
-                             path->filter().condition, &outer_query_block);
+                             path->filter().condition, &outer_query_block, path->risk_level);
 
+      path->set_risk_level(child.risk_level);
       path->set_cost(child.cost() +
                      (path->filter().materialize_subqueries
                           ? filterCost.cost_if_materialized
@@ -1876,13 +1879,13 @@ void SetCostOnTableAccessPath(const Cost_model_server &cost_model,
   // Note that we don't try to adjust for the filtering here;
   // we estimate the same cost as the table itself.
   const double cost =
-      pos->read_cost + cost_model.row_evaluate_cost(num_rows_after_filtering);
+      pos->read_cost + cost_model.row_evaluate_cost(path->num_output_rows());
   if (pos->prefix_rowcount <= 0.0) {
     path->set_cost(cost);
   } else {
     // Scale the estimated cost to being for one loop only, to match the
     // measured costs.
-    path->set_cost(cost * num_rows_after_filtering / pos->prefix_rowcount);
+    path->set_cost(cost * path->num_output_rows() / pos->prefix_rowcount);
   }
 }
 
@@ -1915,11 +1918,13 @@ void SetCostOnNestedLoopAccessPath(const Cost_model_server &cost_model,
       pos_inner->filter_effect > 0.0
           ? (inner->num_output_rows() / pos_inner->filter_effect)
           : 0.0;
+  path->set_risk_level(outer->risk_level);
+  path->set_risk_level(inner->risk_level);
   const double joined_rows =
       outer->num_output_rows() * inner_expected_rows_before_filter;
   path->set_num_output_rows(joined_rows * pos_inner->filter_effect);
   path->set_cost(outer->cost() + pos_inner->read_cost +
-                 cost_model.row_evaluate_cost(joined_rows));
+                 cost_model.row_evaluate_cost(BoundingBox::GetNewCost(joined_rows, path->risk_level)));
 }
 
 void SetCostOnHashJoinAccessPath(const Cost_model_server &cost_model,
@@ -1937,13 +1942,15 @@ void SetCostOnHashJoinAccessPath(const Cost_model_server &cost_model,
     return;
   }
 
+  path->set_risk_level(outer->risk_level);
+  path->set_risk_level(inner->risk_level);
   // Mirrors set_prefix_join_cost(), even though the cost calculation doesn't
   // make a lot of sense.
   const double joined_rows =
       outer->num_output_rows() * inner->num_output_rows();
   path->set_num_output_rows(joined_rows * pos_outer->filter_effect);
   path->set_cost(inner->cost() + pos_outer->read_cost +
-                 cost_model.row_evaluate_cost(joined_rows));
+                 cost_model.row_evaluate_cost(BoundingBox::GetNewCost(joined_rows, path->risk_level)));
 }
 
 static bool ConditionIsAlwaysTrue(Item *item) {
@@ -2996,7 +3003,8 @@ static AccessPath *add_filter_access_path(THD *thd, AccessPath *path,
     // as on repeated execution of a prepared query, the condition may contain
     // references to subqueries that are destroyed and not re-optimized yet.
     const FilterCost filter_cost = EstimateFilterCost(
-        thd, filter_path->num_output_rows(), condition, query_block);
+        thd, filter_path->num_output_rows(), condition, query_block, filter_path->risk_level);
+    filter_path->set_risk_level(condition->risk_level);
     filter_path->set_cost(filter_path->cost() +
                           filter_cost.cost_if_not_materialized);
     filter_path->set_init_cost(filter_path->init_cost() +

@@ -130,6 +130,7 @@ void EstimateSortCost(AccessPath *path) {
     path->set_num_output_rows(num_output_rows);
   }
 
+  path->set_risk_level(child->risk_level);
   path->set_cost(child->cost() + sort_cost);
   path->set_init_cost(path->cost());
   path->set_init_once_cost(0.0);
@@ -191,6 +192,13 @@ FilterCost EstimateFilterCost(THD *thd, double num_rows, Item *condition,
   return cost;
 }
 
+FilterCost EstimateFilterCost(THD *thd, double num_rows, Item *condition,
+                              const Query_block *outer_query_block, RiskLevel risk_level) {
+  FilterCost cost = EstimateFilterCost(thd, BoundingBox::GetNewCost(num_rows, risk_level),
+                             condition, outer_query_block);
+  return cost;
+}
+
 // Very rudimentary (assuming no deduplication; it's better to overestimate
 // than to understimate), so that we get something that isn't “unknown”.
 void EstimateMaterializeCost(THD *thd, AccessPath *path) {
@@ -238,6 +246,7 @@ void EstimateMaterializeCost(THD *thd, AccessPath *path) {
     table_path->set_num_output_rows(path->num_output_rows());
     table_path->set_init_cost(subquery_cost);
     table_path->set_init_once_cost(cost_for_cacheable);
+    table_path->set_risk_level(path->risk_level);
 
     if (Overlaps(test_flags, TEST_NO_TEMP_TABLES)) {
       // Unit tests don't load any temporary table engines,
@@ -868,6 +877,7 @@ void EstimateAggregateCost(AccessPath *path, const Query_block *query_block,
         child, query_block, path->aggregate().olap == ROLLUP_TYPE, trace));
   }
 
+  path->set_risk_level(child->risk_level);
   path->set_init_cost(child->init_cost());
   path->set_init_once_cost(child->init_once_cost());
 
@@ -883,6 +893,7 @@ void EstimateDeleteRowsCost(AccessPath *path) {
   const auto &param = path->delete_rows();
   const AccessPath *child = param.child;
 
+  path->set_risk_level(child->risk_level);
   path->set_num_output_rows(child->num_output_rows());
   path->set_init_once_cost(child->init_once_cost());
   path->set_init_cost(child->init_cost());
@@ -900,6 +911,7 @@ void EstimateUpdateRowsCost(AccessPath *path) {
   const auto &param = path->update_rows();
   const AccessPath *child = param.child;
 
+  path->set_risk_level(child->risk_level);
   path->set_num_output_rows(child->num_output_rows());
   path->set_init_once_cost(child->init_once_cost());
   path->set_init_cost(child->init_cost());
@@ -915,6 +927,7 @@ void EstimateUpdateRowsCost(AccessPath *path) {
 
 void EstimateStreamCost(AccessPath *path) {
   AccessPath &child = *path->stream().child;
+  path->set_risk_level(child.risk_level);
   path->set_num_output_rows(child.num_output_rows());
   path->set_cost(child.cost());
   path->set_init_cost(child.init_cost());
@@ -932,6 +945,8 @@ void EstimateStreamCost(AccessPath *path) {
 void EstimateLimitOffsetCost(AccessPath *path) {
   auto &lim = path->limit_offset();
   AccessPath *&child = lim.child;
+
+  path->set_risk_level(child->risk_level);
 
   if (child->num_output_rows() >= 0.0) {
     path->set_num_output_rows(
@@ -967,6 +982,7 @@ void EstimateWindowCost(AccessPath *path) {
   auto &win = path->window();
   AccessPath *child = win.child;
 
+  path->set_risk_level(child->risk_level);
   path->set_num_output_rows(child->num_output_rows());
   path->set_init_cost(child->init_cost());
   path->set_init_once_cost(child->init_once_cost());

@@ -55,6 +55,7 @@
 #include "sql/join_optimizer/estimate_selectivity.h"
 #include "sql/join_optimizer/overflow_bitset.h"
 #include "sql/join_optimizer/relational_expression.h"
+#include "sql/join_optimizer/risk_level.h"
 #include "sql/join_optimizer/walk_access_paths.h"
 #include "sql/mem_root_array.h"
 #include "sql/pack_rows.h"
@@ -1525,11 +1526,12 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
          BitsSetIn(path->nested_loop_join().equijoin_predicates)) {
       Item *condition = expr->equijoin_conditions[filter_idx];
       items.push_back(condition);
-      filter_cost +=
-          EstimateFilterCost(thd, filter_rows, condition, join->query_block)
-              .cost_if_not_materialized;
+      double temp_filter_rows = filter_rows;
       filter_rows *= EstimateSelectivity(thd, condition, *expr->companion_set,
                                          /*trace=*/nullptr, &risk_level);
+      filter_cost +=
+          EstimateFilterCost(thd, temp_filter_rows, condition, join->query_block, std::max(path->risk_level, risk_level))
+              .cost_if_not_materialized;
       if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(highest_risk_level)) {
         highest_risk_level = risk_level;
       }
@@ -1537,11 +1539,12 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
     }
     for (Item *condition : expr->join_conditions) {
       items.push_back(condition);
-      filter_cost +=
-          EstimateFilterCost(thd, filter_rows, condition, join->query_block)
-              .cost_if_not_materialized;
+      double temp_filter_rows = filter_rows;
       filter_rows *= EstimateSelectivity(thd, condition, *expr->companion_set,
                                          /*trace=*/nullptr, &risk_level);
+      filter_cost +=
+          EstimateFilterCost(thd, temp_filter_rows, condition, join->query_block, std::max(path->risk_level, risk_level))
+              .cost_if_not_materialized;
       if (static_cast<std::underlying_type_t<RiskLevel>>(risk_level) > static_cast<std::underlying_type_t<RiskLevel>>(highest_risk_level)) {
         highest_risk_level = risk_level;
       }
@@ -1569,6 +1572,7 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
     path->set_risk_level(path->nested_loop_join().outer->risk_level);
     path->set_risk_level(path->nested_loop_join().inner->risk_level);
     path->set_risk_level(path->nested_loop_join().join_predicate->risk_level);
+    path->set_risk_level(highest_risk_level);
 
     // Since multiple root paths may have their filters expanded,
     // and the same nested loop may be a subpath in several
@@ -1598,9 +1602,10 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
   }
   AccessPath *new_path = new (thd->mem_root) AccessPath(*path);
   new_path->filter_predicates.Clear();
+  path->risk_level = condition->risk_level;
+  new_path->set_risk_level(path->risk_level);
   new_path->set_num_output_rows(path->num_output_rows_before_filter);
   new_path->set_cost(path->cost_before_filter());
-  new_path->set_risk_level(path->risk_level);
 
   // We don't really know how much of init_cost comes from the filter,
   // but we need to heed the invariant that cost >= init_cost
@@ -1631,6 +1636,11 @@ void ExpandSingleFilterAccessPath(THD *thd, AccessPath *path, const JOIN *join,
 void ExpandFilterAccessPaths(THD *thd, AccessPath *path_arg, const JOIN *join,
                              const Mem_root_array<Predicate> &predicates,
                              unsigned num_where_predicates) {
+  for (int filter_idx : BitsSetIn(path_arg->filter_predicates)) {
+    if (filter_idx >= static_cast<int>(num_where_predicates)) break;
+    const Predicate &predicate = predicates[filter_idx];
+    path_arg->risk_level = predicate.condition->risk_level;
+  }
   WalkAccessPaths(path_arg, join, WalkAccessPathPolicy::ENTIRE_QUERY_BLOCK,
                   [thd, &predicates, num_where_predicates](
                       AccessPath *path, const JOIN *sub_join) {

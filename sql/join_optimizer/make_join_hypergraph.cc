@@ -3053,7 +3053,6 @@ void AddCycleEdges(THD *thd, const Mem_root_array<Item *> &cycle_inducing_edges,
       if (dup) {
         continue;
       }
-      //Todo leag: save risk level
       RiskLevel risk_level = RiskLevel::Low;
       pred->selectivity *=
           EstimateSelectivity(thd, cond, *expr->companion_set, trace, &risk_level);

@@ -95,6 +95,9 @@ void AddCost(THD *thd, const ContainedSubquery &subquery, double num_rows,
 FilterCost EstimateFilterCost(THD *thd, double num_rows, Item *condition,
                               const Query_block *outer_query_block);
 
+FilterCost EstimateFilterCost(THD *thd, double num_rows, Item *condition,
+                              const Query_block *outer_query_block, RiskLevel risk_level);
+
 /**
   A cheaper overload of EstimateFilterCost() that assumes that all
   contained subqueries have already been extracted (ie., it skips the
@@ -112,6 +115,14 @@ inline FilterCost EstimateFilterCost(
     AddCost(thd, subquery, num_rows, &cost);
   }
   return cost;
+}
+
+inline FilterCost EstimateFilterCost(
+    THD *thd, double num_rows,
+    const Mem_root_array<ContainedSubquery> &contained_subqueries, RiskLevel risk_level) {
+    FilterCost cost = EstimateFilterCost(thd, BoundingBox::GetNewCost(num_rows, risk_level),
+                               contained_subqueries);
+    return cost;
 }
 
 double EstimateCostForRefAccess(THD *thd, TABLE *table, unsigned key_idx,
@@ -202,22 +213,22 @@ inline double FindOutputRowsForJoin(double left_rows, double right_rows,
       // are matching, we get a NULL-complemented row).
       // Note that this can cause inconsistent row counts; see bug #33550360
       // and/or JoinHypergraph::has_reordered_left_joins.
-      return left_rows * std::max(right_rows * edge->selectivity, 1.0);
+      return BoundingBox::GetNewCost(left_rows, edge->risk_level) * std::max(BoundingBox::GetNewCost(right_rows, edge->risk_level) * edge->selectivity, 1.0);
 
     case RelationalExpression::SEMIJOIN:
-      return left_rows * EstimateSemijoinFanOut(right_rows, *edge);
+      return BoundingBox::GetNewCost(left_rows, edge->risk_level) * EstimateSemijoinFanOut(right_rows, *edge);
 
     case RelationalExpression::ANTIJOIN:
       // Antijoin are estimated as simply the opposite of semijoin (see above),
       // but wrongly estimating 0 rows (or, of course, a negative amount) could
       // be really bad, so we assume at least 10% coming out as a fudge factor.
       // It's better to estimate too high than too low here.
-      return left_rows *
+      return BoundingBox::GetNewCost(left_rows, edge->risk_level) *
              std::max(1.0 - EstimateSemijoinFanOut(right_rows, *edge), 0.1);
 
     case RelationalExpression::INNER_JOIN:
     case RelationalExpression::STRAIGHT_INNER_JOIN:
-      return left_rows * right_rows * edge->selectivity;
+      return BoundingBox::GetNewCost(left_rows, edge->risk_level) * BoundingBox::GetNewCost(right_rows, edge->risk_level) * edge->selectivity;
 
     case RelationalExpression::FULL_OUTER_JOIN:   // Not implemented.
     case RelationalExpression::MULTI_INNER_JOIN:  // Should not appear here.
