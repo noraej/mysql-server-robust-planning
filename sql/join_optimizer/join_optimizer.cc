@@ -85,6 +85,7 @@
 #include "sql/join_optimizer/relational_expression.h"
 #include "sql/join_optimizer/secondary_engine_costing_flags.h"
 #include "sql/join_optimizer/subgraph_enumeration.h"
+#include "sql/join_optimizer/uncertain_choice_counter.h"
 #include "sql/join_optimizer/walk_access_paths.h"
 #include "sql/join_type.h"
 #include "sql/key.h"
@@ -8072,34 +8073,5 @@ AccessPath *FindBestQueryPlan(THD *thd, Query_block *query_block,
 }
 
 
-std::unordered_map<int, int> UncertainChoiceCounter::counter;
-int UncertainChoiceCounter::currentQuery;
 
-void ::UncertainChoiceCounter::AddNewCounterForQuery(){
-  currentQuery += 1;
-  counter.insert({currentQuery, 0});
-}
-
-void ::UncertainChoiceCounter::IncreaseCounter() {
-  auto pair = counter.find(currentQuery);
-  if(pair != counter.end()) {
-    pair->second = pair->second + 1;
-  }
-}
-
-void ::UncertainChoiceCounter::PrintCountInformation(){
-  string plansAndChoices = "";
-  for (const auto & pair: counter) {
-    plansAndChoices += "[";
-    plansAndChoices += std::to_string(pair.first);
-    plansAndChoices += ", ";
-    plansAndChoices += std::to_string(pair.second);
-    plansAndChoices += "], ";
-  }
-  plansAndChoices += "\n";
-
-  std::ofstream outputfile("/home/leag/MySQL/mysql-server-robust-planning/cmake-build-release/mysql-test/var/log/uncertain_choices_count.txt", std::ios::out | std::ios::binary);
-  outputfile << plansAndChoices;
-  outputfile.close();
-}
 
