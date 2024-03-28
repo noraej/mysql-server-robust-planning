@@ -5076,7 +5076,7 @@ PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
   flags = AddFlag(
       flags, FuzzyComparison(a.rescan_cost(), b.rescan_cost(), fuzz_factor));
 
-  auto cost_threshold = 0.05;
+  auto cost_threshold = 0.01;
   double cost_difference = std::abs(a.cost() - b.cost());
 
   double highest_cost = std::max(a.cost(), b.cost());
@@ -5086,10 +5086,14 @@ PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
   if (cost_difference <= percentage_of_plan) {
     if (a.type == AccessPath::HASH_JOIN &&
         b.type == AccessPath::NESTED_LOOP_JOIN) {
+      if (b.nested_loop_join().inner->type == AccessPath::REF || b.nested_loop_join().inner->type == AccessPath::EQ_REF)
+        return PathComparisonResult::SECOND_DOMINATES;
       return PathComparisonResult::FIRST_DOMINATES;
     }
     if (b.type == AccessPath::HASH_JOIN &&
         a.type == AccessPath::NESTED_LOOP_JOIN) {
+      if (a.nested_loop_join().inner->type == AccessPath::REF || a.nested_loop_join().inner->type == AccessPath::EQ_REF)
+        return PathComparisonResult::FIRST_DOMINATES;
       return PathComparisonResult::SECOND_DOMINATES;
     }
   }
