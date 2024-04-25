@@ -12,13 +12,8 @@ enum class RiskLevel;
 class BoundingBox {
 public:
   static double incremental_step;
-  static double decremental_step;
-  static double alpha;
-  static double beta;
-  static double gamma;
 
   static double GetUpperBound(double estimate, RiskLevel risk_level);
-  static double GetLowerBound(double estimate, RiskLevel risk_level);
 };
 
 enum class RiskLevel {
