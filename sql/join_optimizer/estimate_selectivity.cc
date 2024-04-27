@@ -498,6 +498,19 @@ double EstimateSelectivity(THD *thd, Item *condition,
       /*rows_in_table=*/1000.0);
 
   selectivity = std::min(selectivity, selectivity_cap);
+
+  if (selectivity != 0.1f && selectivity != 0.3333f && selectivity != 0.1111f && selectivity != 1.0f - 0.1f && selectivity != 1.0f - 0.3333f && selectivity != 1.0f - 0.1111f)
+  {
+    if (trace != nullptr) {
+      *trace += StringPrintf(" - histogram selectivity for %s = %g\n",
+                             ItemToString(condition).c_str(), selectivity);
+    }
+
+    *risk_level = RiskLevel::Medium;
+    return selectivity;
+  }
+
+
   if (trace != nullptr) {
     *trace += StringPrintf(" - fallback selectivity for %s = %g\n",
                            ItemToString(condition).c_str(), selectivity);
